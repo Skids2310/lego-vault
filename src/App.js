@@ -97,6 +97,8 @@ export default function LegoDatabase() {
   const [expandedSet, setExpandedSet] = useState(null);
   const [activeTab, setActiveTab] = useState("Collection");
   const [minifigSearch, setMinifigSearch] = useState("");
+  const [urlInput, setUrlInput] = useState("");
+  const [urlLoading, setUrlLoading] = useState(false);
 
   useEffect(() => { loadSets(); }, []);
 
@@ -129,6 +131,66 @@ export default function LegoDatabase() {
   function markOwned(id) {
     const u = sets.map(s => s.id===id ? {...s, status:"Built"} : s);
     setSets(u); saveSets(u); showToast("🧱 Marked as owned!");
+  }
+
+  async function importFromUrl(status="Wanted") {
+    if (!urlInput.trim()) return;
+    // Extract set number and name slug from LEGO.com URL
+    const match = urlInput.match(/-(\d{4,6})\/?$/);
+    if (!match) return showToast("Couldn't find a set number in that URL — try a lego.com/product/... link", "error");
+    const setNumber = match[1];
+    const pathSlug = urlInput.replace(/\/$/, "").split("/").pop();
+    const nameSlug = pathSlug.replace(/-\d+$/, "");
+    const guessedName = nameSlug.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+
+    setUrlLoading(true);
+    showToast("🔍 Looking up set details...");
+
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 400,
+          messages: [{
+            role: "user",
+            content: `Look up LEGO set number ${setNumber} (${guessedName}). Reply with ONLY a JSON object, no markdown, no explanation:
+{"name":"full set name","setNumber":"${setNumber}","theme":"theme name","year":"release year as 4 digits","pieces":"piece count as number","minifigs":"minifig count as number","minifigNames":"comma separated minifig names or empty string"}`
+          }]
+        })
+      });
+      const data = await response.json();
+      const text = data.content?.[0]?.text || "";
+      const clean = text.replace(/```json|```/g, "").trim();
+      const info = JSON.parse(clean);
+      const notes = info.minifigNames ? `Minifigs: ${info.minifigNames}` : "";
+      const newSet = {
+        ...EMPTY_FORM,
+        id: Date.now().toString(),
+        addedAt: Date.now(),
+        status,
+        name: info.name || guessedName,
+        setNumber: info.setNumber || setNumber,
+        theme: info.theme || "Other",
+        year: info.year || "",
+        pieces: info.pieces || "",
+        minifigs: info.minifigs || "",
+        notes,
+      };
+      const u = [newSet, ...sets];
+      setSets(u); saveSets(u);
+      setUrlInput("");
+      showToast(`${status==="Wanted"?"⭐":"🧱"} Added "${newSet.name}"${status==="Wanted"?" to wishlist":""} !`);
+    } catch(e) {
+      // Fallback: add with just what we parsed from URL
+      const newSet = { ...EMPTY_FORM, id: Date.now().toString(), addedAt: Date.now(), status, name: guessedName, setNumber };
+      const u = [newSet, ...sets];
+      setSets(u); saveSets(u);
+      setUrlInput("");
+      showToast(`${status==="Wanted"?"⭐":"🧱"} Added "${guessedName}" — edit to add more details`);
+    }
+    setUrlLoading(false);
   }
 
   const allFolders = [...new Set(sets.map(s=>s.folder||"").filter(Boolean))].sort();
@@ -221,7 +283,32 @@ export default function LegoDatabase() {
           {/* ── COLLECTION TAB ── */}
           {activeTab === "Collection" && (
             <>
-              {!showForm && <button onClick={()=>{setShowForm(true);setEditId(null);setForm(EMPTY_FORM);}} style={{ background:"#ffd60a",color:"#0f0e17",border:"none",padding:"0.75rem 2rem",borderRadius:"8px",fontWeight:"900",fontSize:"1rem",cursor:"pointer",marginBottom:"1.5rem",fontFamily:"'Impact',sans-serif",letterSpacing:"0.05em",boxShadow:"0 4px 15px rgba(255,214,10,0.3)" }}>+ ADD NEW SET</button>}
+              {!showForm && <button onClick={()=>{setShowForm(true);setEditId(null);setForm(EMPTY_FORM);}} style={{ background:"#ffd60a",color:"#0f0e17",border:"none",padding:"0.75rem 2rem",borderRadius:"8px",fontWeight:"900",fontSize:"1rem",cursor:"pointer",marginBottom:"1.5rem",fontFamily:"'Impact',sans-serif",letterSpacing:"0.05em",boxShadow:"0 4px 15px rgba(255,214,10,0.3)" }}>+ ADD MANUALLY</button>}
+
+              {/* URL import box for collection */}
+              {!showForm && (
+                <div style={{ background:"rgba(26,26,46,0.92)",border:"1px solid #e6394633",borderRadius:"12px",padding:"1.25rem",marginBottom:"1.5rem",backdropFilter:"blur(4px)" }}>
+                  <div style={{ fontSize:"0.8rem",color:"#e63946",fontFamily:"sans-serif",fontWeight:"700",marginBottom:"0.6rem",letterSpacing:"0.05em",textTransform:"uppercase" }}>
+                    ⚡ Quick Add from LEGO.com URL
+                  </div>
+                  <div style={{ fontSize:"0.72rem",color:"#666",fontFamily:"sans-serif",marginBottom:"0.75rem" }}>
+                    Paste any lego.com product URL and we'll look up all the details automatically
+                  </div>
+                  <div style={{ display:"flex",gap:"0.5rem" }}>
+                    <input
+                      value={urlInput}
+                      onChange={e=>setUrlInput(e.target.value)}
+                      onKeyDown={e=>e.key==="Enter" && importFromUrl("Built")}
+                      placeholder="https://www.lego.com/en-au/product/..."
+                      style={{...IS, flex:1, background:"rgba(15,14,23,0.8)"}}
+                    />
+                    <button onClick={()=>importFromUrl("Built")} disabled={urlLoading}
+                      style={{ background:urlLoading?"#333":"#e63946",color:"#fff",border:"none",padding:"0.55rem 1.25rem",borderRadius:"6px",fontWeight:"900",cursor:urlLoading?"not-allowed":"pointer",fontFamily:"'Impact',sans-serif",fontSize:"0.9rem",whiteSpace:"nowrap" }}>
+                      {urlLoading ? "..." : "ADD 🧱"}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {showForm && (
                 <div style={{ background:"rgba(26,26,46,0.95)",border:"2px solid #e63946",borderRadius:"12px",padding:"1.5rem",marginBottom:"2rem",backdropFilter:"blur(4px)" }}>
@@ -338,7 +425,30 @@ export default function LegoDatabase() {
               <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.25rem",flexWrap:"wrap",gap:"0.75rem" }}>
                 <h2 style={{ margin:0,fontFamily:"'Impact',sans-serif",color:"#ffd60a",letterSpacing:"0.05em" }}>⭐ WISHLIST — {wishlist.length} SETS</h2>
                 <button onClick={()=>{setShowForm(true);setEditId(null);setForm({...EMPTY_FORM,status:"Wanted"});setActiveTab("Collection");}}
-                  style={{ background:"#ffd60a",color:"#0f0e17",border:"none",padding:"0.6rem 1.25rem",borderRadius:"8px",fontWeight:"900",fontSize:"0.9rem",cursor:"pointer",fontFamily:"'Impact',sans-serif" }}>+ ADD TO WISHLIST</button>
+                  style={{ background:"#ffd60a",color:"#0f0e17",border:"none",padding:"0.6rem 1.25rem",borderRadius:"8px",fontWeight:"900",fontSize:"0.9rem",cursor:"pointer",fontFamily:"'Impact',sans-serif" }}>+ ADD MANUALLY</button>
+              </div>
+
+              {/* URL import box */}
+              <div style={{ background:"rgba(26,26,46,0.92)",border:"1px solid #ffd60a33",borderRadius:"12px",padding:"1.25rem",marginBottom:"1.5rem",backdropFilter:"blur(4px)" }}>
+                <div style={{ fontSize:"0.8rem",color:"#ffd60a",fontFamily:"sans-serif",fontWeight:"700",marginBottom:"0.6rem",letterSpacing:"0.05em",textTransform:"uppercase" }}>
+                  ⚡ Quick Add from LEGO.com URL
+                </div>
+                <div style={{ fontSize:"0.72rem",color:"#666",fontFamily:"sans-serif",marginBottom:"0.75rem" }}>
+                  Paste any lego.com product URL and we'll look up all the details automatically
+                </div>
+                <div style={{ display:"flex",gap:"0.5rem" }}>
+                  <input
+                    value={urlInput}
+                    onChange={e=>setUrlInput(e.target.value)}
+                    onKeyDown={e=>e.key==="Enter" && importFromUrl("Wanted")}
+                    placeholder="https://www.lego.com/en-au/product/..."
+                    style={{...IS, flex:1, background:"rgba(15,14,23,0.8)"}}
+                  />
+                  <button onClick={()=>importFromUrl("Wanted")} disabled={urlLoading}
+                    style={{ background:urlLoading?"#333":"#e63946",color:"#fff",border:"none",padding:"0.55rem 1.25rem",borderRadius:"6px",fontWeight:"900",cursor:urlLoading?"not-allowed":"pointer",fontFamily:"'Impact',sans-serif",fontSize:"0.9rem",whiteSpace:"nowrap" }}>
+                    {urlLoading ? "..." : "ADD ⭐"}
+                  </button>
+                </div>
               </div>
               {wishlist.length === 0 ? (
                 <div style={{ textAlign:"center",color:"#555",padding:"4rem",fontFamily:"sans-serif" }}>
