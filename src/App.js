@@ -1,5 +1,32 @@
 import { useState, useEffect } from "react";
 
+const SUPABASE_URL = "https://xxphodciijtmxldnqazz.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh4cGhvZGNpaWp0bXhsZG5xYXp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MjQzNTcsImV4cCI6MjA5NjQwMDM1N30.Y0J_9RFfULkr_tYZMPbb4XF9Dcg5yJmJNa1_so972OY";
+const RECORD_ID = 1; // single row stores all sets as JSON
+
+async function dbLoad() {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/sets?id=eq.${RECORD_ID}`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+  });
+  const rows = await res.json();
+  return rows?.[0]?.data ? JSON.parse(rows[0].data) : null;
+}
+
+async function dbSave(data) {
+  const body = JSON.stringify({ id: RECORD_ID, data: JSON.stringify(data) });
+  // Upsert: insert or update in one call
+  await fetch(`${SUPABASE_URL}/rest/v1/sets`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates,return=minimal"
+    },
+    body
+  });
+}
+
 const THEMES = ["Architecture","Botanicals","City","Classic","Creator","Creator Expert","Harry Potter","Icons","Ideas","Ikea","Marvel","Monkie Kid","Other","Seasonal","Speed Champions","Sports","Star Wars","Technic","The Lego Movie 2","Xtra"];
 const STATUS_OPTIONS = ["Sealed","Built","Displayed","Stored","Incomplete","Wanted"];
 const STATUS_COLORS = { Sealed:"#22c55e", Built:"#3b82f6", Displayed:"#a855f7", Stored:"#f59e0b", Incomplete:"#ef4444", Wanted:"#ec4899" };
@@ -104,16 +131,30 @@ export default function LegoDatabase() {
 
   async function loadSets() {
     try {
-      const result = await window.storage.get("lego-sets-v2");
-      if (result?.value) setSets(JSON.parse(result.value));
-      else { setSets(SEED_DATA); await window.storage.set("lego-sets-v2", JSON.stringify(SEED_DATA)); }
-    } catch(e) { setSets(SEED_DATA); }
+      const remote = await dbLoad();
+      if (remote) {
+        setSets(remote);
+        localStorage.setItem("lego-sets-v2", JSON.stringify(remote));
+      } else {
+        // First time: seed the database with existing collection
+        const local = localStorage.getItem("lego-sets-v2");
+        const data = local ? JSON.parse(local) : SEED_DATA;
+        setSets(data);
+        await dbSave(data);
+      }
+    } catch(e) {
+      // Offline fallback - use localStorage
+      const local = localStorage.getItem("lego-sets-v2");
+      setSets(local ? JSON.parse(local) : SEED_DATA);
+    }
     setLoading(false);
   }
 
   async function saveSets(u) {
-    try { await window.storage.set("lego-sets-v2", JSON.stringify(u)); }
-    catch(e) { showToast("Couldn't save", "error"); }
+    try {
+      localStorage.setItem("lego-sets-v2", JSON.stringify(u));
+      await dbSave(u);
+    } catch(e) { showToast("Couldn't save — check connection", "error"); }
   }
 
   function showToast(msg, type="success") { setToast({msg,type}); setTimeout(()=>setToast(null),3000); }
