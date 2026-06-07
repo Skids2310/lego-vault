@@ -32,7 +32,7 @@ const THEMES = ["Architecture","Botanicals","City","Classic","Creator","Creator 
 const STATUS_OPTIONS = ["Sealed","Built","Displayed","Stored","Incomplete","Wanted"];
 const STATUS_COLORS = { Sealed:"#22c55e", Built:"#3b82f6", Displayed:"#a855f7", Stored:"#f59e0b", Incomplete:"#ef4444", Wanted:"#ec4899" };
 const EMPTY_FORM = { name:"", setNumber:"", theme:"City", year:"", pieces:"", status:"Built", notes:"", rating:0, imageUrl:"", folder:"", purchasePrice:"", currentValue:"" };
-const TABS = ["Collection","Wishlist","Minifigures","Hogwarts"];
+const TABS = ["Collection","Wishlist","Minifigures","Stats"];
 
 const THEME_COLORS = {
   "Harry Potter": "#7b2d8b",
@@ -57,31 +57,6 @@ const THEME_COLORS = {
   "Xtra": "#6c757d",
 };
 
-// Hogwarts locations and which sets cover them
-const HOGWARTS_LOCATIONS = [
-  { name:"Great Hall", sets:["75954","76435"], icon:"🍽️" },
-  { name:"Astronomy Tower", sets:["75969"], icon:"🔭" },
-  { name:"Clock Tower", sets:["75948"], icon:"🕰️" },
-  { name:"Chamber of Secrets", sets:["76389"], icon:"🐍" },
-  { name:"Room of Requirement", sets:["75966","76413","40770"], icon:"🚪" },
-  { name:"Hospital Wing", sets:["76398","76463"], icon:"🏥" },
-  { name:"Dumbledore's Office", sets:["76402","30724"], icon:"🦅" },
-  { name:"Potions Class", sets:["76383","76431","76464"], icon:"⚗️" },
-  { name:"Herbology Class", sets:["76384","76445"], icon:"🌿" },
-  { name:"Charms Class", sets:["76385","76442"], icon:"✨" },
-  { name:"Transfiguration Class", sets:["76382"], icon:"🦁" },
-  { name:"Defence Class", sets:["76397"], icon:"🛡️" },
-  { name:"Divination Class", sets:["76396"], icon:"🔮" },
-  { name:"Flying Lessons", sets:["76395","76447"], icon:"🧹" },
-  { name:"Whomping Willow", sets:["75953","76407"], icon:"🌳" },
-  { name:"Gryffindor Common Room", sets:["40452"], icon:"🦁" },
-  { name:"Boathouse", sets:["76426"], icon:"⛵" },
-  { name:"Owlery", sets:["76430"], icon:"🦉" },
-  { name:"Grand Staircase", sets:["40577"], icon:"🪜" },
-  { name:"Courtyard", sets:["76401"], icon:"🏰" },
-  { name:"Hogwarts Castle (full)", sets:["4757","71043","76419","76454"], icon:"🏰" },
-  { name:"Hogwarts Grounds", sets:["76419"], icon:"🌲" },
-];
 
 const LEGO_BRICK_SVG = `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='50' viewBox='0 0 60 50'>
   <rect x='2' y='14' width='56' height='34' rx='3' fill='none' stroke='%23ffffff' stroke-width='1.5' opacity='0.15'/>
@@ -178,6 +153,10 @@ export default function LegoDatabase() {
   const [urlLoading, setUrlLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem("lego-admin") === ADMIN_PASSWORD);
   const [selectedSet, setSelectedSet] = useState(null);
+  const [selectedSets, setSelectedSets] = useState(new Set());
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkFolder, setBulkFolder] = useState("");
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState(false);
@@ -247,6 +226,31 @@ export default function LegoDatabase() {
     localStorage.removeItem("lego-admin");
     setIsAdmin(false);
     showToast("🔒 Logged out");
+  }
+
+  function toggleBulkSelect(id) {
+    setSelectedSets(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function applyBulkEdit() {
+    if (selectedSets.size === 0) return;
+    const u = sets.map(s => {
+      if (!selectedSets.has(s.id)) return s;
+      return {
+        ...s,
+        ...(bulkStatus ? { status: bulkStatus } : {}),
+        ...(bulkFolder ? { folder: bulkFolder } : {}),
+      };
+    });
+    setSets(u); saveSets(u);
+    setSelectedSets(new Set());
+    setBulkMode(false);
+    setBulkStatus(""); setBulkFolder("");
+    showToast(`✅ Updated ${selectedSets.size} sets`);
   }
 
   async function importFromUrl(status="Wanted") {
@@ -394,7 +398,7 @@ export default function LegoDatabase() {
           {TABS.map(tab => (
             <button key={tab} onClick={()=>{ setActiveTab(tab); setShowForm(false); }}
               style={{ flex:1, padding:"0.85rem", background:"none", border:"none", borderBottom: activeTab===tab?"3px solid #ffd60a":"3px solid transparent", color: activeTab===tab?"#ffd60a":"#666", fontFamily:"'Impact',sans-serif", letterSpacing:"0.1em", fontSize:"0.95rem", cursor:"pointer", transition:"color 0.15s" }}>
-              {tab === "Collection" ? `📦 ${tab}` : tab === "Wishlist" ? `⭐ ${tab} (${wishlist.length})` : tab === "Hogwarts" ? `🏰 ${tab}` : `🧑 ${tab}`}
+              {tab === "Collection" ? `📦 ${tab}` : tab === "Wishlist" ? `⭐ ${tab} (${wishlist.length})` : tab === "Stats" ? `📊 ${tab}` : `🧑 ${tab}`}
             </button>
           ))}
         </div>
@@ -405,7 +409,10 @@ export default function LegoDatabase() {
           {/* ── COLLECTION TAB ── */}
           {activeTab === "Collection" && (
             <>
-              {!showForm && isAdmin && <button onClick={()=>{setShowForm(true);setEditId(null);setForm(EMPTY_FORM);}} style={{ background:"#ffd60a",color:"#0f0e17",border:"none",padding:"0.75rem 2rem",borderRadius:"8px",fontWeight:"900",fontSize:"1rem",cursor:"pointer",marginBottom:"1.5rem",fontFamily:"'Impact',sans-serif",letterSpacing:"0.05em",boxShadow:"0 4px 15px rgba(255,214,10,0.3)" }}>+ ADD MANUALLY</button>}
+              <div style={{ display:"flex",gap:"0.75rem",marginBottom:"1.5rem",flexWrap:"wrap" }}>
+                {!showForm && isAdmin && <button onClick={()=>{setShowForm(true);setEditId(null);setForm(EMPTY_FORM);}} style={{ background:"#ffd60a",color:"#0f0e17",border:"none",padding:"0.75rem 2rem",borderRadius:"8px",fontWeight:"900",fontSize:"1rem",cursor:"pointer",fontFamily:"'Impact',sans-serif",letterSpacing:"0.05em",boxShadow:"0 4px 15px rgba(255,214,10,0.3)" }}>+ ADD MANUALLY</button>}
+                {isAdmin && !showForm && <button onClick={()=>{setBulkMode(b=>!b);setSelectedSets(new Set());}} style={{ background:bulkMode?"#e63946":"transparent",color:bulkMode?"#fff":"#aaa",border:"1px solid "+(bulkMode?"#e63946":"#444"),padding:"0.75rem 1.25rem",borderRadius:"8px",fontWeight:"700",fontSize:"0.9rem",cursor:"pointer",fontFamily:"sans-serif" }}>{bulkMode?"✕ Cancel Bulk":"☑ Bulk Edit"}</button>}
+              </div>
 
               {/* URL import box for collection */}
               {!showForm && isAdmin && (
@@ -483,15 +490,28 @@ export default function LegoDatabase() {
                 </select>
               </div>
 
-              <div style={{ fontSize:"0.72rem",color:"#555",fontFamily:"sans-serif",marginBottom:"0.75rem" }}>Showing {filtered.length} of {owned.length} sets</div>
+              {bulkMode && selectedSets.size > 0 && (
+                <div style={{ background:"rgba(26,26,46,0.95)",border:"1px solid #e63946",borderRadius:"10px",padding:"0.85rem 1rem",marginBottom:"1rem",display:"flex",gap:"0.75rem",alignItems:"center",flexWrap:"wrap" }}>
+                  <span style={{ color:"#ffd60a",fontFamily:"'Impact',sans-serif",letterSpacing:"0.05em" }}>{selectedSets.size} SELECTED</span>
+                  <select value={bulkStatus} onChange={e=>setBulkStatus(e.target.value)} style={{...IS,width:"auto",background:"#0f0e17"}}>
+                    <option value="">Change status...</option>
+                    {STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}
+                  </select>
+                  <input value={bulkFolder} onChange={e=>setBulkFolder(e.target.value)} placeholder="Change folder..." style={{...IS,width:"160px",background:"#0f0e17"}}/>
+                  <button onClick={applyBulkEdit} style={{ background:"#22c55e",color:"#fff",border:"none",padding:"0.5rem 1.25rem",borderRadius:"6px",fontWeight:"700",cursor:"pointer",fontFamily:"sans-serif",fontSize:"0.85rem" }}>Apply</button>
+                  <button onClick={()=>{setSelectedSets(new Set(filtered.map(s=>s.id)));}} style={{ background:"transparent",color:"#aaa",border:"1px solid #444",padding:"0.5rem 0.75rem",borderRadius:"6px",cursor:"pointer",fontFamily:"sans-serif",fontSize:"0.75rem" }}>Select All</button>
+                  <button onClick={()=>setSelectedSets(new Set())} style={{ background:"transparent",color:"#aaa",border:"1px solid #444",padding:"0.5rem 0.75rem",borderRadius:"6px",cursor:"pointer",fontFamily:"sans-serif",fontSize:"0.75rem" }}>Clear</button>
+                </div>
+              )}
+              <div style={{ fontSize:"0.72rem",color:"#555",fontFamily:"sans-serif",marginBottom:"0.75rem" }}>Showing {filtered.length} of {owned.length} sets{bulkMode ? " · tap cards to select" : ""}</div>
 
               {loading ? (
                 <div style={{ textAlign:"center",color:"#aaa",padding:"3rem",fontFamily:"sans-serif" }}>Loading vault...</div>
               ) : (
                 <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(230px,1fr))",gap:"1rem" }}>
                   {filtered.map(set=>(
-                    <div key={set.id} onClick={()=>setExpandedSet(expandedSet===set.id?null:set.id)}
-                      style={{ background:"rgba(26,26,46,0.92)",border:`1px solid ${expandedSet===set.id ? (THEME_COLORS[set.theme]||"#e63946") : "#2a2a4a"}`,borderRadius:"12px",overflow:"hidden",cursor:"pointer",transition:"border-color 0.15s,transform 0.1s",transform:expandedSet===set.id?"scale(1.01)":"scale(1)",backdropFilter:"blur(4px)" }}>
+                    <div key={set.id} onClick={()=>bulkMode ? toggleBulkSelect(set.id) : setExpandedSet(expandedSet===set.id?null:set.id)}
+                      style={{ background: bulkMode && selectedSets.has(set.id) ? "rgba(34,197,94,0.1)" : "rgba(26,26,46,0.92)",border:`1px solid ${bulkMode && selectedSets.has(set.id) ? "#22c55e" : expandedSet===set.id ? (THEME_COLORS[set.theme]||"#e63946") : "#2a2a4a"}`,borderRadius:"12px",overflow:"hidden",cursor:"pointer",transition:"border-color 0.15s,transform 0.1s",transform:expandedSet===set.id?"scale(1.01)":"scale(1)",backdropFilter:"blur(4px)" }}>
                       <SetImage setNumber={set.setNumber} imageUrl={set.imageUrl} size="card"/>
                       <div style={{ padding:"0.85rem",display:"flex",flexDirection:"column",gap:"0.4rem" }}>
                         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"0.5rem" }}>
@@ -643,63 +663,163 @@ export default function LegoDatabase() {
           )}
 
 
-          {/* ── HOGWARTS TRACKER TAB ── */}
-          {activeTab === "Hogwarts" && (
-            <>
-              <h2 style={{ margin:"0 0 0.5rem",fontFamily:"'Impact',sans-serif",color:"#ffd60a",letterSpacing:"0.05em" }}>🏰 HOGWARTS COMPLETION TRACKER</h2>
-              <p style={{ color:"#666",fontFamily:"sans-serif",fontSize:"0.8rem",marginBottom:"1.5rem" }}>
-                Track which Hogwarts locations you have covered across your Harry Potter collection.
-              </p>
-              {(() => {
-                const ownedNums = new Set(sets.filter(s=>s.status!=="Wanted").map(s=>s.setNumber));
-                const completed = HOGWARTS_LOCATIONS.filter(loc => loc.sets.some(n => ownedNums.has(n)));
-                const pct = Math.round((completed.length / HOGWARTS_LOCATIONS.length) * 100);
-                return (
-                  <>
-                    {/* Progress bar */}
-                    <div style={{ background:"rgba(26,26,46,0.9)",borderRadius:"12px",padding:"1.25rem",marginBottom:"1.5rem",border:"1px solid #7b2d8b44" }}>
-                      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.6rem" }}>
-                        <span style={{ fontFamily:"'Impact',sans-serif",color:"#ffd60a",letterSpacing:"0.05em" }}>OVERALL COMPLETION</span>
-                        <span style={{ fontFamily:"'Impact',sans-serif",color:"#ffd60a",fontSize:"1.5rem" }}>{pct}%</span>
-                      </div>
-                      <div style={{ background:"#1a1a2e",borderRadius:"100px",height:"12px",overflow:"hidden" }}>
-                        <div style={{ width:`${pct}%`,height:"100%",background:"linear-gradient(90deg,#7b2d8b,#a855f7)",borderRadius:"100px",transition:"width 0.5s" }}/>
-                      </div>
-                      <div style={{ fontSize:"0.75rem",color:"#666",fontFamily:"sans-serif",marginTop:"0.5rem" }}>{completed.length} of {HOGWARTS_LOCATIONS.length} locations covered</div>
+
+          {/* ── STATS TAB ── */}
+          {activeTab === "Stats" && (() => {
+            const ownedSets = sets.filter(s=>s.status!=="Wanted");
+            // By theme
+            const byTheme = {};
+            ownedSets.forEach(s=>{ byTheme[s.theme]=(byTheme[s.theme]||0)+1; });
+            const themeData = Object.entries(byTheme).sort((a,b)=>b[1]-a[1]);
+            const maxTheme = themeData[0]?.[1]||1;
+            // By year
+            const byYear = {};
+            ownedSets.forEach(s=>{ if(s.year) byYear[s.year]=(byYear[s.year]||0)+1; });
+            const yearData = Object.entries(byYear).sort((a,b)=>a[0]-b[0]);
+            const maxYear = Math.max(...yearData.map(([,v])=>v),1);
+            // By status
+            const byStatus = {};
+            sets.forEach(s=>{ byStatus[s.status]=(byStatus[s.status]||0)+1; });
+            // By folder
+            const byFolder = {};
+            ownedSets.forEach(s=>{ const f=s.folder||"No Folder"; byFolder[f]=(byFolder[f]||0)+1; });
+            const folderData = Object.entries(byFolder).sort((a,b)=>b[1]-a[1]);
+            // Value stats
+            const withValue = ownedSets.filter(s=>s.purchasePrice&&s.currentValue);
+            const totalPaid2 = ownedSets.reduce((s,x)=>s+(parseFloat(x.purchasePrice)||0),0);
+            const totalVal2 = ownedSets.reduce((s,x)=>s+(parseFloat(x.currentValue)||0),0);
+            const topValue = [...ownedSets].filter(s=>s.currentValue).sort((a,b)=>parseFloat(b.currentValue)-parseFloat(a.currentValue)).slice(0,5);
+            const biggestSets = [...ownedSets].filter(s=>s.pieces).sort((a,b)=>parseInt(b.pieces)-parseInt(a.pieces)).slice(0,5);
+
+            return (
+              <>
+                <h2 style={{ margin:"0 0 1.5rem",fontFamily:"'Impact',sans-serif",color:"#ffd60a",letterSpacing:"0.05em" }}>📊 COLLECTION STATS</h2>
+
+                {/* Summary cards */}
+                <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:"0.75rem",marginBottom:"2rem" }}>
+                  {[
+                    ["Total Sets",ownedSets.length,"#3b82f6"],
+                    ["Total Pieces",ownedSets.reduce((s,x)=>s+(parseInt(x.pieces)||0),0).toLocaleString(),"#22c55e"],
+                    ["Total Minifigs",ownedSets.reduce((s,x)=>s+(parseInt(x.minifigs)||0),0).toLocaleString(),"#a855f7"],
+                    ["Themes Covered",Object.keys(byTheme).length,"#f59e0b"],
+                    ["Wishlist",sets.filter(s=>s.status==="Wanted").length,"#ec4899"],
+                    ...(totalPaid2>0?[["Total Paid","$"+totalPaid2.toFixed(0),"#ef4444"],["Est. Value","$"+totalVal2.toFixed(0),"#22c55e"]]:[]),
+                  ].map(([l,v,c])=>(
+                    <div key={l} style={{ background:"rgba(26,26,46,0.92)",border:`1px solid ${c}44`,borderRadius:"10px",padding:"1rem",textAlign:"center",backdropFilter:"blur(4px)" }}>
+                      <div style={{ fontSize:"1.6rem",fontWeight:"900",fontFamily:"'Impact',sans-serif",color:c }}>{v}</div>
+                      <div style={{ fontSize:"0.65rem",color:"#666",fontFamily:"sans-serif",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:"0.2rem" }}>{l}</div>
                     </div>
-                    {/* Location grid */}
-                    <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:"0.75rem" }}>
-                      {HOGWARTS_LOCATIONS.map(loc => {
-                        const have = loc.sets.filter(n => ownedNums.has(n));
-                        const done = have.length > 0;
-                        const coveredSets = sets.filter(s => loc.sets.includes(s.setNumber));
-                        return (
-                          <div key={loc.name} style={{ background:"rgba(26,26,46,0.92)",border:`1px solid ${done?"#7b2d8b":"#2a2a4a"}`,borderRadius:"10px",padding:"0.9rem",backdropFilter:"blur(4px)" }}>
-                            <div style={{ display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.4rem" }}>
-                              <span style={{ fontSize:"1.2rem" }}>{loc.icon}</span>
-                              <span style={{ fontWeight:"700",color: done?"#fffffe":"#555",fontSize:"0.85rem",fontFamily:"sans-serif" }}>{loc.name}</span>
-                              {done && <span style={{ marginLeft:"auto",color:"#a855f7",fontSize:"0.8rem" }}>✓</span>}
-                            </div>
-                            {coveredSets.length > 0 ? (
-                              <div style={{ display:"flex",flexDirection:"column",gap:"0.2rem" }}>
-                                {coveredSets.map(s=>(
-                                  <div key={s.id} onClick={()=>setSelectedSet(s)} style={{ fontSize:"0.7rem",color:"#888",fontFamily:"sans-serif",cursor:"pointer",textDecoration:"underline dotted" }}>
-                                    #{s.setNumber} {s.name}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div style={{ fontSize:"0.7rem",color:"#444",fontFamily:"sans-serif",fontStyle:"italic" }}>Not in collection</div>
-                            )}
+                  ))}
+                </div>
+
+                <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1.5rem",marginBottom:"2rem" }}>
+
+                  {/* Sets by theme */}
+                  <div style={{ background:"rgba(26,26,46,0.92)",border:"1px solid #2a2a4a",borderRadius:"12px",padding:"1.25rem",backdropFilter:"blur(4px)" }}>
+                    <h3 style={{ margin:"0 0 1rem",fontFamily:"'Impact',sans-serif",color:"#ffd60a",fontSize:"1rem",letterSpacing:"0.05em" }}>SETS BY THEME</h3>
+                    <div style={{ display:"flex",flexDirection:"column",gap:"0.5rem" }}>
+                      {themeData.slice(0,10).map(([theme,count])=>(
+                        <div key={theme}>
+                          <div style={{ display:"flex",justifyContent:"space-between",marginBottom:"0.2rem" }}>
+                            <span style={{ fontSize:"0.75rem",fontFamily:"sans-serif",color:"#ccc",display:"flex",alignItems:"center",gap:"0.35rem" }}>
+                              <span style={{ width:"8px",height:"8px",borderRadius:"50%",background:THEME_COLORS[theme]||"#666",display:"inline-block",flexShrink:0 }}/>
+                              {theme}
+                            </span>
+                            <span style={{ fontSize:"0.75rem",fontFamily:"monospace",color:"#ffd60a" }}>{count}</span>
                           </div>
-                        );
-                      })}
+                          <div style={{ background:"#0f0e17",borderRadius:"100px",height:"6px",overflow:"hidden" }}>
+                            <div style={{ width:`${(count/maxTheme)*100}%`,height:"100%",background:THEME_COLORS[theme]||"#666",borderRadius:"100px",transition:"width 0.4s" }}/>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </>
-                );
-              })()}
-            </>
-          )}
+                  </div>
+
+                  {/* Sets by status */}
+                  <div style={{ background:"rgba(26,26,46,0.92)",border:"1px solid #2a2a4a",borderRadius:"12px",padding:"1.25rem",backdropFilter:"blur(4px)" }}>
+                    <h3 style={{ margin:"0 0 1rem",fontFamily:"'Impact',sans-serif",color:"#ffd60a",fontSize:"1rem",letterSpacing:"0.05em" }}>BY STATUS</h3>
+                    <div style={{ display:"flex",flexDirection:"column",gap:"0.6rem" }}>
+                      {Object.entries(byStatus).sort((a,b)=>b[1]-a[1]).map(([status,count])=>(
+                        <div key={status} style={{ display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+                          <span style={{ fontSize:"0.78rem",fontFamily:"sans-serif",color:STATUS_COLORS[status]||"#aaa",display:"flex",alignItems:"center",gap:"0.4rem" }}>
+                            <span style={{ width:"8px",height:"8px",borderRadius:"50%",background:STATUS_COLORS[status]||"#aaa",display:"inline-block" }}/>
+                            {status}
+                          </span>
+                          <span style={{ background:(STATUS_COLORS[status]||"#aaa")+"22",color:STATUS_COLORS[status]||"#aaa",border:`1px solid ${STATUS_COLORS[status]||"#aaa"}44`,borderRadius:"100px",padding:"0.1rem 0.6rem",fontSize:"0.75rem",fontFamily:"monospace" }}>{count}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <h3 style={{ margin:"1.25rem 0 0.75rem",fontFamily:"'Impact',sans-serif",color:"#ffd60a",fontSize:"1rem",letterSpacing:"0.05em" }}>BY FOLDER</h3>
+                    <div style={{ display:"flex",flexDirection:"column",gap:"0.4rem",maxHeight:"180px",overflow:"auto" }}>
+                      {folderData.map(([folder,count])=>(
+                        <div key={folder} style={{ display:"flex",justifyContent:"space-between",fontSize:"0.75rem",fontFamily:"sans-serif",color:"#aaa" }}>
+                          <span>📁 {folder}</span>
+                          <span style={{ color:"#ffd60a",fontFamily:"monospace" }}>{count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sets by year */}
+                <div style={{ background:"rgba(26,26,46,0.92)",border:"1px solid #2a2a4a",borderRadius:"12px",padding:"1.25rem",marginBottom:"1.5rem",backdropFilter:"blur(4px)" }}>
+                  <h3 style={{ margin:"0 0 1rem",fontFamily:"'Impact',sans-serif",color:"#ffd60a",fontSize:"1rem",letterSpacing:"0.05em" }}>SETS BY YEAR</h3>
+                  <div style={{ display:"flex",alignItems:"flex-end",gap:"3px",height:"80px",overflowX:"auto",paddingBottom:"0.5rem" }}>
+                    {yearData.map(([year,count])=>(
+                      <div key={year} style={{ display:"flex",flexDirection:"column",alignItems:"center",gap:"0.2rem",minWidth:"28px" }}>
+                        <span style={{ fontSize:"0.55rem",color:"#ffd60a",fontFamily:"monospace" }}>{count}</span>
+                        <div style={{ width:"20px",background:"#e63946",borderRadius:"3px 3px 0 0",height:`${(count/maxYear)*60}px`,minHeight:"4px",transition:"height 0.4s" }}/>
+                        <span style={{ fontSize:"0.5rem",color:"#555",fontFamily:"monospace",transform:"rotate(-45deg)",transformOrigin:"top left",marginTop:"0.2rem",whiteSpace:"nowrap" }}>{year}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1.5rem",marginBottom:"2rem" }}>
+                  {/* Biggest sets */}
+                  <div style={{ background:"rgba(26,26,46,0.92)",border:"1px solid #2a2a4a",borderRadius:"12px",padding:"1.25rem",backdropFilter:"blur(4px)" }}>
+                    <h3 style={{ margin:"0 0 1rem",fontFamily:"'Impact',sans-serif",color:"#ffd60a",fontSize:"1rem",letterSpacing:"0.05em" }}>BIGGEST SETS</h3>
+                    {biggestSets.map((s,i)=>(
+                      <div key={s.id} onClick={()=>setSelectedSet(s)} style={{ display:"flex",gap:"0.6rem",alignItems:"center",marginBottom:"0.6rem",cursor:"pointer" }}>
+                        <span style={{ color:"#555",fontFamily:"monospace",fontSize:"0.75rem",width:"16px" }}>#{i+1}</span>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:"0.78rem",color:"#fffffe",fontFamily:"sans-serif",lineHeight:1.2 }}>{s.name}</div>
+                          <div style={{ fontSize:"0.68rem",color:"#ffd60a",fontFamily:"monospace" }}>{Number(s.pieces).toLocaleString()} pcs</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Top value sets */}
+                  {topValue.length > 0 && (
+                    <div style={{ background:"rgba(26,26,46,0.92)",border:"1px solid #2a2a4a",borderRadius:"12px",padding:"1.25rem",backdropFilter:"blur(4px)" }}>
+                      <h3 style={{ margin:"0 0 1rem",fontFamily:"'Impact',sans-serif",color:"#ffd60a",fontSize:"1rem",letterSpacing:"0.05em" }}>TOP VALUE SETS</h3>
+                      {topValue.map((s,i)=>(
+                        <div key={s.id} onClick={()=>setSelectedSet(s)} style={{ display:"flex",gap:"0.6rem",alignItems:"center",marginBottom:"0.6rem",cursor:"pointer" }}>
+                          <span style={{ color:"#555",fontFamily:"monospace",fontSize:"0.75rem",width:"16px" }}>#{i+1}</span>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:"0.78rem",color:"#fffffe",fontFamily:"sans-serif",lineHeight:1.2 }}>{s.name}</div>
+                            <div style={{ fontSize:"0.68rem",color:"#22c55e",fontFamily:"monospace" }}>${parseFloat(s.currentValue).toFixed(2)}</div>
+                          </div>
+                        </div>
+                      ))}
+                      {totalPaid2>0 && (
+                        <div style={{ marginTop:"0.75rem",paddingTop:"0.75rem",borderTop:"1px solid #2a2a4a",fontSize:"0.75rem",fontFamily:"sans-serif" }}>
+                          <div style={{ display:"flex",justifyContent:"space-between",color:"#aaa",marginBottom:"0.3rem" }}><span>Total paid</span><span>${totalPaid2.toFixed(2)}</span></div>
+                          <div style={{ display:"flex",justifyContent:"space-between",color:"#aaa",marginBottom:"0.3rem" }}><span>Est. value</span><span>${totalVal2.toFixed(2)}</span></div>
+                          <div style={{ display:"flex",justifyContent:"space-between",fontWeight:"700" }}>
+                            <span style={{ color: totalVal2>=totalPaid2?"#22c55e":"#ef4444" }}>Overall {totalVal2>=totalPaid2?"gain":"loss"}</span>
+                            <span style={{ color: totalVal2>=totalPaid2?"#22c55e":"#ef4444" }}>{totalVal2>=totalPaid2?"+":"-"}${Math.abs(totalVal2-totalPaid2).toFixed(2)}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
+            );
+          })()}
 
           {/* ── SET DETAIL MODAL ── */}
           {selectedSet && (
