@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 const SUPABASE_URL = "https://xxphodciijtmxldnqazz.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh4cGhvZGNpaWp0bXhsZG5xYXp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MjQzNTcsImV4cCI6MjA5NjQwMDM1N30.Y0J_9RFfULkr_tYZMPbb4XF9Dcg5yJmJNa1_so972OY";
 const RECORD_ID = 1; // single row stores all sets as JSON
+const ADMIN_PASSWORD = "legovault2024"; // change this to whatever you like
 
 async function dbLoad() {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/sets?id=eq.${RECORD_ID}`, {
@@ -126,6 +127,10 @@ export default function LegoDatabase() {
   const [minifigSearch, setMinifigSearch] = useState("");
   const [urlInput, setUrlInput] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem("lego-admin") === ADMIN_PASSWORD);
+  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordError, setPasswordError] = useState(false);
 
   useEffect(() => { loadSets(); }, []);
 
@@ -172,6 +177,26 @@ export default function LegoDatabase() {
   function markOwned(id) {
     const u = sets.map(s => s.id===id ? {...s, status:"Built"} : s);
     setSets(u); saveSets(u); showToast("🧱 Marked as owned!");
+  }
+
+  function attemptLogin() {
+    if (passwordInput === ADMIN_PASSWORD) {
+      localStorage.setItem("lego-admin", ADMIN_PASSWORD);
+      setIsAdmin(true);
+      setShowPasswordPrompt(false);
+      setPasswordInput("");
+      setPasswordError(false);
+      showToast("🔓 Admin mode unlocked!");
+    } else {
+      setPasswordError(true);
+      setPasswordInput("");
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem("lego-admin");
+    setIsAdmin(false);
+    showToast("🔒 Logged out");
   }
 
   async function importFromUrl(status="Wanted") {
@@ -291,6 +316,12 @@ export default function LegoDatabase() {
           <div style={{ position:"relative" }}>
             <div style={{ fontSize:"3.5rem", fontWeight:"900", fontFamily:"'Impact',sans-serif", letterSpacing:"-1px" }}>🧱 LEGO VAULT</div>
             <div style={{ fontSize:"0.85rem", letterSpacing:"0.3em", color:"#ffd60a", marginTop:"0.2rem", textTransform:"uppercase" }}>Personal Collection Database</div>
+            <div style={{ marginTop:"0.5rem" }}>
+              {isAdmin
+                ? <button onClick={logout} style={{ background:"transparent",color:"#ffffff88",border:"1px solid #ffffff33",padding:"0.25rem 0.75rem",borderRadius:"100px",fontSize:"0.7rem",cursor:"pointer",fontFamily:"sans-serif" }}>🔓 Admin · Lock</button>
+                : <button onClick={()=>setShowPasswordPrompt(true)} style={{ background:"transparent",color:"#ffffff44",border:"1px solid #ffffff22",padding:"0.25rem 0.75rem",borderRadius:"100px",fontSize:"0.7rem",cursor:"pointer",fontFamily:"sans-serif" }}>🔒 Admin Login</button>
+              }
+            </div>
             <div style={{ display:"flex", gap:"1.5rem", justifyContent:"center", marginTop:"1.2rem", flexWrap:"wrap" }}>
               {[
                 ["Sets Owned", owned.length],
@@ -324,10 +355,10 @@ export default function LegoDatabase() {
           {/* ── COLLECTION TAB ── */}
           {activeTab === "Collection" && (
             <>
-              {!showForm && <button onClick={()=>{setShowForm(true);setEditId(null);setForm(EMPTY_FORM);}} style={{ background:"#ffd60a",color:"#0f0e17",border:"none",padding:"0.75rem 2rem",borderRadius:"8px",fontWeight:"900",fontSize:"1rem",cursor:"pointer",marginBottom:"1.5rem",fontFamily:"'Impact',sans-serif",letterSpacing:"0.05em",boxShadow:"0 4px 15px rgba(255,214,10,0.3)" }}>+ ADD MANUALLY</button>}
+              {!showForm && isAdmin && <button onClick={()=>{setShowForm(true);setEditId(null);setForm(EMPTY_FORM);}} style={{ background:"#ffd60a",color:"#0f0e17",border:"none",padding:"0.75rem 2rem",borderRadius:"8px",fontWeight:"900",fontSize:"1rem",cursor:"pointer",marginBottom:"1.5rem",fontFamily:"'Impact',sans-serif",letterSpacing:"0.05em",boxShadow:"0 4px 15px rgba(255,214,10,0.3)" }}>+ ADD MANUALLY</button>}
 
               {/* URL import box for collection */}
-              {!showForm && (
+              {!showForm && isAdmin && (
                 <div style={{ background:"rgba(26,26,46,0.92)",border:"1px solid #e6394633",borderRadius:"12px",padding:"1.25rem",marginBottom:"1.5rem",backdropFilter:"blur(4px)" }}>
                   <div style={{ fontSize:"0.8rem",color:"#e63946",fontFamily:"sans-serif",fontWeight:"700",marginBottom:"0.6rem",letterSpacing:"0.05em",textTransform:"uppercase" }}>
                     ⚡ Quick Add from LEGO.com URL
@@ -441,8 +472,8 @@ export default function LegoDatabase() {
                           <div style={{ marginTop:"0.4rem",paddingTop:"0.75rem",borderTop:"1px solid #2a2a4a" }}>
                             {set.notes && <div style={{ fontSize:"0.75rem",color:"#888",fontFamily:"sans-serif",fontStyle:"italic",lineHeight:1.5,marginBottom:"0.75rem" }}>{set.notes}</div>}
                             <div style={{ display:"flex",gap:"0.5rem",flexWrap:"wrap" }} onClick={e=>e.stopPropagation()}>
-                              <button onClick={()=>handleEdit(set)} style={{ flex:1,background:"transparent",color:"#60a5fa",border:"1px solid #2563eb44",padding:"0.4rem",borderRadius:"6px",cursor:"pointer",fontSize:"0.75rem",fontFamily:"sans-serif" }}>Edit</button>
-                              <button onClick={()=>setConfirmDelete(set.id)} style={{ flex:1,background:"transparent",color:"#f87171",border:"1px solid #ef444444",padding:"0.4rem",borderRadius:"6px",cursor:"pointer",fontSize:"0.75rem",fontFamily:"sans-serif" }}>Delete</button>
+                              {isAdmin && <button onClick={()=>handleEdit(set)} style={{ flex:1,background:"transparent",color:"#60a5fa",border:"1px solid #2563eb44",padding:"0.4rem",borderRadius:"6px",cursor:"pointer",fontSize:"0.75rem",fontFamily:"sans-serif" }}>Edit</button>}
+                              {isAdmin && <button onClick={()=>setConfirmDelete(set.id)} style={{ flex:1,background:"transparent",color:"#f87171",border:"1px solid #ef444444",padding:"0.4rem",borderRadius:"6px",cursor:"pointer",fontSize:"0.75rem",fontFamily:"sans-serif" }}>Delete</button>}
                               {set.setNumber && (
                                 <a href={legoUrl(set.setNumber, set.name)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
                                   style={{ flex:1,background:"#ffd60a22",color:"#ffd60a",border:"1px solid #ffd60a44",padding:"0.4rem",borderRadius:"6px",cursor:"pointer",fontSize:"0.75rem",fontFamily:"sans-serif",textDecoration:"none",textAlign:"center",display:"block" }}>
@@ -465,12 +496,11 @@ export default function LegoDatabase() {
             <>
               <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.25rem",flexWrap:"wrap",gap:"0.75rem" }}>
                 <h2 style={{ margin:0,fontFamily:"'Impact',sans-serif",color:"#ffd60a",letterSpacing:"0.05em" }}>⭐ WISHLIST — {wishlist.length} SETS</h2>
-                <button onClick={()=>{setShowForm(true);setEditId(null);setForm({...EMPTY_FORM,status:"Wanted"});setActiveTab("Collection");}}
-                  style={{ background:"#ffd60a",color:"#0f0e17",border:"none",padding:"0.6rem 1.25rem",borderRadius:"8px",fontWeight:"900",fontSize:"0.9rem",cursor:"pointer",fontFamily:"'Impact',sans-serif" }}>+ ADD MANUALLY</button>
+{isAdmin && <button onClick={()=>{setShowForm(true);setEditId(null);setForm({...EMPTY_FORM,status:"Wanted"});setActiveTab("Collection");}} style={{ background:"#ffd60a",color:"#0f0e17",border:"none",padding:"0.6rem 1.25rem",borderRadius:"8px",fontWeight:"900",fontSize:"0.9rem",cursor:"pointer",fontFamily:"'Impact',sans-serif" }}>+ ADD MANUALLY</button>}
               </div>
 
               {/* URL import box */}
-              <div style={{ background:"rgba(26,26,46,0.92)",border:"1px solid #ffd60a33",borderRadius:"12px",padding:"1.25rem",marginBottom:"1.5rem",backdropFilter:"blur(4px)" }}>
+              {isAdmin && <div style={{ background:"rgba(26,26,46,0.92)",border:"1px solid #ffd60a33",borderRadius:"12px",padding:"1.25rem",marginBottom:"1.5rem",backdropFilter:"blur(4px)" }}>
                 <div style={{ fontSize:"0.8rem",color:"#ffd60a",fontFamily:"sans-serif",fontWeight:"700",marginBottom:"0.6rem",letterSpacing:"0.05em",textTransform:"uppercase" }}>
                   ⚡ Quick Add from LEGO.com URL
                 </div>
@@ -490,7 +520,7 @@ export default function LegoDatabase() {
                     {urlLoading ? "..." : "ADD ⭐"}
                   </button>
                 </div>
-              </div>
+              </div>}
               {wishlist.length === 0 ? (
                 <div style={{ textAlign:"center",color:"#555",padding:"4rem",fontFamily:"sans-serif" }}>
                   <div style={{ fontSize:"3rem" }}>⭐</div>
@@ -511,11 +541,11 @@ export default function LegoDatabase() {
                         </div>
                         {set.currentValue && <div style={{ fontSize:"0.75rem",color:"#888",fontFamily:"sans-serif" }}>RRP: <span style={{ color:"#fffffe" }}>${parseFloat(set.currentValue).toFixed(2)}</span></div>}
                         {set.notes && <div style={{ fontSize:"0.72rem",color:"#666",fontFamily:"sans-serif",fontStyle:"italic" }}>{set.notes}</div>}
-                        <div style={{ display:"flex",gap:"0.5rem",marginTop:"0.25rem" }}>
+                        {isAdmin && <div style={{ display:"flex",gap:"0.5rem",marginTop:"0.25rem" }}>
                           <button onClick={()=>markOwned(set.id)} style={{ flex:2,background:"#22c55e22",color:"#22c55e",border:"1px solid #22c55e44",padding:"0.45rem",borderRadius:"6px",cursor:"pointer",fontSize:"0.75rem",fontFamily:"sans-serif",fontWeight:"700" }}>✓ Mark Owned</button>
                           <button onClick={()=>handleEdit(set)} style={{ flex:1,background:"transparent",color:"#60a5fa",border:"1px solid #2563eb44",padding:"0.45rem",borderRadius:"6px",cursor:"pointer",fontSize:"0.75rem",fontFamily:"sans-serif" }}>Edit</button>
                           <button onClick={()=>setConfirmDelete(set.id)} style={{ flex:1,background:"transparent",color:"#f87171",border:"1px solid #ef444444",padding:"0.45rem",borderRadius:"6px",cursor:"pointer",fontSize:"0.75rem",fontFamily:"sans-serif" }}>✕</button>
-                        </div>
+                        </div>}
                         {set.setNumber && (
                           <a href={legoUrl(set.setNumber, set.name)} target="_blank" rel="noreferrer"
                             style={{ background:"#ffd60a22",color:"#ffd60a",border:"1px solid #ffd60a44",padding:"0.4rem",borderRadius:"6px",fontSize:"0.75rem",fontFamily:"sans-serif",textDecoration:"none",textAlign:"center",display:"block" }}>
@@ -559,6 +589,31 @@ export default function LegoDatabase() {
                 </div>
               )}
             </>
+          )}
+
+          {/* Password prompt modal */}
+          {showPasswordPrompt && (
+            <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100 }}>
+              <div style={{ background:"#1a1a2e",border:"2px solid #ffd60a",borderRadius:"12px",padding:"2rem",maxWidth:"320px",width:"90%",fontFamily:"sans-serif" }}>
+                <div style={{ fontSize:"1.5rem",marginBottom:"0.5rem",textAlign:"center" }}>🔒</div>
+                <div style={{ fontWeight:"700",marginBottom:"0.25rem",textAlign:"center",fontFamily:"'Impact',sans-serif",letterSpacing:"0.05em",color:"#ffd60a",fontSize:"1.1rem" }}>ADMIN LOGIN</div>
+                <div style={{ color:"#666",fontSize:"0.8rem",marginBottom:"1.25rem",textAlign:"center" }}>Enter password to unlock editing</div>
+                <input
+                  type="password"
+                  placeholder="Password"
+                  value={passwordInput}
+                  onChange={e=>{ setPasswordInput(e.target.value); setPasswordError(false); }}
+                  onKeyDown={e=>e.key==="Enter" && attemptLogin()}
+                  autoFocus
+                  style={{ ...IS, marginBottom:"0.5rem", background:"#0f0e17" }}
+                />
+                {passwordError && <div style={{ color:"#ef4444",fontSize:"0.78rem",marginBottom:"0.75rem" }}>Incorrect password</div>}
+                <div style={{ display:"flex",gap:"0.75rem",marginTop:"0.75rem" }}>
+                  <button onClick={attemptLogin} style={{ flex:1,background:"#ffd60a",color:"#0f0e17",border:"none",padding:"0.6rem",borderRadius:"8px",cursor:"pointer",fontWeight:"900",fontFamily:"'Impact',sans-serif" }}>UNLOCK</button>
+                  <button onClick={()=>{ setShowPasswordPrompt(false); setPasswordInput(""); setPasswordError(false); }} style={{ flex:1,background:"transparent",color:"#aaa",border:"1px solid #444",padding:"0.6rem",borderRadius:"8px",cursor:"pointer" }}>Cancel</button>
+                </div>
+              </div>
+            </div>
           )}
 
           {confirmDelete && (
