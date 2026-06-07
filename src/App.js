@@ -32,7 +32,56 @@ const THEMES = ["Architecture","Botanicals","City","Classic","Creator","Creator 
 const STATUS_OPTIONS = ["Sealed","Built","Displayed","Stored","Incomplete","Wanted"];
 const STATUS_COLORS = { Sealed:"#22c55e", Built:"#3b82f6", Displayed:"#a855f7", Stored:"#f59e0b", Incomplete:"#ef4444", Wanted:"#ec4899" };
 const EMPTY_FORM = { name:"", setNumber:"", theme:"City", year:"", pieces:"", status:"Built", notes:"", rating:0, imageUrl:"", folder:"", purchasePrice:"", currentValue:"" };
-const TABS = ["Collection","Wishlist","Minifigures"];
+const TABS = ["Collection","Wishlist","Minifigures","Hogwarts"];
+
+const THEME_COLORS = {
+  "Harry Potter": "#7b2d8b",
+  "City": "#0d6efd",
+  "Creator Expert": "#c1121f",
+  "Icons": "#c1121f",
+  "Creator": "#fd7e14",
+  "Classic": "#ffc107",
+  "Botanicals": "#2d8b4e",
+  "Architecture": "#6c757d",
+  "Ideas": "#20c997",
+  "Technic": "#e63946",
+  "Star Wars": "#212529",
+  "Marvel": "#e63946",
+  "Speed Champions": "#fd7e14",
+  "Seasonal": "#20c997",
+  "Sports": "#0d6efd",
+  "Other": "#6c757d",
+  "Ikea": "#0057a8",
+  "Monkie Kid": "#e63946",
+  "The Lego Movie 2": "#ffc107",
+  "Xtra": "#6c757d",
+};
+
+// Hogwarts locations and which sets cover them
+const HOGWARTS_LOCATIONS = [
+  { name:"Great Hall", sets:["75954","76435"], icon:"🍽️" },
+  { name:"Astronomy Tower", sets:["75969"], icon:"🔭" },
+  { name:"Clock Tower", sets:["75948"], icon:"🕰️" },
+  { name:"Chamber of Secrets", sets:["76389"], icon:"🐍" },
+  { name:"Room of Requirement", sets:["75966","76413","40770"], icon:"🚪" },
+  { name:"Hospital Wing", sets:["76398","76463"], icon:"🏥" },
+  { name:"Dumbledore's Office", sets:["76402","30724"], icon:"🦅" },
+  { name:"Potions Class", sets:["76383","76431","76464"], icon:"⚗️" },
+  { name:"Herbology Class", sets:["76384","76445"], icon:"🌿" },
+  { name:"Charms Class", sets:["76385","76442"], icon:"✨" },
+  { name:"Transfiguration Class", sets:["76382"], icon:"🦁" },
+  { name:"Defence Class", sets:["76397"], icon:"🛡️" },
+  { name:"Divination Class", sets:["76396"], icon:"🔮" },
+  { name:"Flying Lessons", sets:["76395","76447"], icon:"🧹" },
+  { name:"Whomping Willow", sets:["75953","76407"], icon:"🌳" },
+  { name:"Gryffindor Common Room", sets:["40452"], icon:"🦁" },
+  { name:"Boathouse", sets:["76426"], icon:"⛵" },
+  { name:"Owlery", sets:["76430"], icon:"🦉" },
+  { name:"Grand Staircase", sets:["40577"], icon:"🪜" },
+  { name:"Courtyard", sets:["76401"], icon:"🏰" },
+  { name:"Hogwarts Castle (full)", sets:["4757","71043","76419","76454"], icon:"🏰" },
+  { name:"Hogwarts Grounds", sets:["76419"], icon:"🌲" },
+];
 
 const LEGO_BRICK_SVG = `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='50' viewBox='0 0 60 50'>
   <rect x='2' y='14' width='56' height='34' rx='3' fill='none' stroke='%23ffffff' stroke-width='1.5' opacity='0.15'/>
@@ -128,6 +177,7 @@ export default function LegoDatabase() {
   const [urlInput, setUrlInput] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem("lego-admin") === ADMIN_PASSWORD);
+  const [selectedSet, setSelectedSet] = useState(null);
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState(false);
@@ -344,7 +394,7 @@ export default function LegoDatabase() {
           {TABS.map(tab => (
             <button key={tab} onClick={()=>{ setActiveTab(tab); setShowForm(false); }}
               style={{ flex:1, padding:"0.85rem", background:"none", border:"none", borderBottom: activeTab===tab?"3px solid #ffd60a":"3px solid transparent", color: activeTab===tab?"#ffd60a":"#666", fontFamily:"'Impact',sans-serif", letterSpacing:"0.1em", fontSize:"0.95rem", cursor:"pointer", transition:"color 0.15s" }}>
-              {tab === "Collection" ? `📦 ${tab}` : tab === "Wishlist" ? `⭐ ${tab} (${wishlist.length})` : `🧑 ${tab}`}
+              {tab === "Collection" ? `📦 ${tab}` : tab === "Wishlist" ? `⭐ ${tab} (${wishlist.length})` : tab === "Hogwarts" ? `🏰 ${tab}` : `🧑 ${tab}`}
             </button>
           ))}
         </div>
@@ -441,7 +491,7 @@ export default function LegoDatabase() {
                 <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(230px,1fr))",gap:"1rem" }}>
                   {filtered.map(set=>(
                     <div key={set.id} onClick={()=>setExpandedSet(expandedSet===set.id?null:set.id)}
-                      style={{ background:"rgba(26,26,46,0.92)",border:`1px solid ${expandedSet===set.id?"#e63946":"#2a2a4a"}`,borderRadius:"12px",overflow:"hidden",cursor:"pointer",transition:"border-color 0.15s,transform 0.1s",transform:expandedSet===set.id?"scale(1.01)":"scale(1)",backdropFilter:"blur(4px)" }}>
+                      style={{ background:"rgba(26,26,46,0.92)",border:`1px solid ${expandedSet===set.id ? (THEME_COLORS[set.theme]||"#e63946") : "#2a2a4a"}`,borderRadius:"12px",overflow:"hidden",cursor:"pointer",transition:"border-color 0.15s,transform 0.1s",transform:expandedSet===set.id?"scale(1.01)":"scale(1)",backdropFilter:"blur(4px)" }}>
                       <SetImage setNumber={set.setNumber} imageUrl={set.imageUrl} size="card"/>
                       <div style={{ padding:"0.85rem",display:"flex",flexDirection:"column",gap:"0.4rem" }}>
                         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"0.5rem" }}>
@@ -472,6 +522,7 @@ export default function LegoDatabase() {
                           <div style={{ marginTop:"0.4rem",paddingTop:"0.75rem",borderTop:"1px solid #2a2a4a" }}>
                             {set.notes && <div style={{ fontSize:"0.75rem",color:"#888",fontFamily:"sans-serif",fontStyle:"italic",lineHeight:1.5,marginBottom:"0.75rem" }}>{set.notes}</div>}
                             <div style={{ display:"flex",gap:"0.5rem",flexWrap:"wrap" }} onClick={e=>e.stopPropagation()}>
+                              <button onClick={e=>{e.stopPropagation();setSelectedSet(set);}} style={{ flex:1,background:"transparent",color:"#a78bfa",border:"1px solid #7c3aed44",padding:"0.4rem",borderRadius:"6px",cursor:"pointer",fontSize:"0.75rem",fontFamily:"sans-serif" }}>Details</button>
                               {isAdmin && <button onClick={()=>handleEdit(set)} style={{ flex:1,background:"transparent",color:"#60a5fa",border:"1px solid #2563eb44",padding:"0.4rem",borderRadius:"6px",cursor:"pointer",fontSize:"0.75rem",fontFamily:"sans-serif" }}>Edit</button>}
                               {isAdmin && <button onClick={()=>setConfirmDelete(set.id)} style={{ flex:1,background:"transparent",color:"#f87171",border:"1px solid #ef444444",padding:"0.4rem",borderRadius:"6px",cursor:"pointer",fontSize:"0.75rem",fontFamily:"sans-serif" }}>Delete</button>}
                               {set.setNumber && (
@@ -589,6 +640,133 @@ export default function LegoDatabase() {
                 </div>
               )}
             </>
+          )}
+
+
+          {/* ── HOGWARTS TRACKER TAB ── */}
+          {activeTab === "Hogwarts" && (
+            <>
+              <h2 style={{ margin:"0 0 0.5rem",fontFamily:"'Impact',sans-serif",color:"#ffd60a",letterSpacing:"0.05em" }}>🏰 HOGWARTS COMPLETION TRACKER</h2>
+              <p style={{ color:"#666",fontFamily:"sans-serif",fontSize:"0.8rem",marginBottom:"1.5rem" }}>
+                Track which Hogwarts locations you have covered across your Harry Potter collection.
+              </p>
+              {(() => {
+                const ownedNums = new Set(sets.filter(s=>s.status!=="Wanted").map(s=>s.setNumber));
+                const completed = HOGWARTS_LOCATIONS.filter(loc => loc.sets.some(n => ownedNums.has(n)));
+                const pct = Math.round((completed.length / HOGWARTS_LOCATIONS.length) * 100);
+                return (
+                  <>
+                    {/* Progress bar */}
+                    <div style={{ background:"rgba(26,26,46,0.9)",borderRadius:"12px",padding:"1.25rem",marginBottom:"1.5rem",border:"1px solid #7b2d8b44" }}>
+                      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.6rem" }}>
+                        <span style={{ fontFamily:"'Impact',sans-serif",color:"#ffd60a",letterSpacing:"0.05em" }}>OVERALL COMPLETION</span>
+                        <span style={{ fontFamily:"'Impact',sans-serif",color:"#ffd60a",fontSize:"1.5rem" }}>{pct}%</span>
+                      </div>
+                      <div style={{ background:"#1a1a2e",borderRadius:"100px",height:"12px",overflow:"hidden" }}>
+                        <div style={{ width:`${pct}%`,height:"100%",background:"linear-gradient(90deg,#7b2d8b,#a855f7)",borderRadius:"100px",transition:"width 0.5s" }}/>
+                      </div>
+                      <div style={{ fontSize:"0.75rem",color:"#666",fontFamily:"sans-serif",marginTop:"0.5rem" }}>{completed.length} of {HOGWARTS_LOCATIONS.length} locations covered</div>
+                    </div>
+                    {/* Location grid */}
+                    <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:"0.75rem" }}>
+                      {HOGWARTS_LOCATIONS.map(loc => {
+                        const have = loc.sets.filter(n => ownedNums.has(n));
+                        const done = have.length > 0;
+                        const coveredSets = sets.filter(s => loc.sets.includes(s.setNumber));
+                        return (
+                          <div key={loc.name} style={{ background:"rgba(26,26,46,0.92)",border:`1px solid ${done?"#7b2d8b":"#2a2a4a"}`,borderRadius:"10px",padding:"0.9rem",backdropFilter:"blur(4px)" }}>
+                            <div style={{ display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.4rem" }}>
+                              <span style={{ fontSize:"1.2rem" }}>{loc.icon}</span>
+                              <span style={{ fontWeight:"700",color: done?"#fffffe":"#555",fontSize:"0.85rem",fontFamily:"sans-serif" }}>{loc.name}</span>
+                              {done && <span style={{ marginLeft:"auto",color:"#a855f7",fontSize:"0.8rem" }}>✓</span>}
+                            </div>
+                            {coveredSets.length > 0 ? (
+                              <div style={{ display:"flex",flexDirection:"column",gap:"0.2rem" }}>
+                                {coveredSets.map(s=>(
+                                  <div key={s.id} onClick={()=>setSelectedSet(s)} style={{ fontSize:"0.7rem",color:"#888",fontFamily:"sans-serif",cursor:"pointer",textDecoration:"underline dotted" }}>
+                                    #{s.setNumber} {s.name}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize:"0.7rem",color:"#444",fontFamily:"sans-serif",fontStyle:"italic" }}>Not in collection</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                );
+              })()}
+            </>
+          )}
+
+          {/* ── SET DETAIL MODAL ── */}
+          {selectedSet && (
+            <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:"1rem" }}
+              onClick={()=>setSelectedSet(null)}>
+              <div onClick={e=>e.stopPropagation()} style={{ background:"#1a1a2e",border:`2px solid ${THEME_COLORS[selectedSet.theme]||"#e63946"}`,borderRadius:"16px",maxWidth:"480px",width:"100%",maxHeight:"90vh",overflow:"auto" }}>
+                {/* Set image */}
+                <div style={{ height:"240px",background:"#fff",borderRadius:"14px 14px 0 0",overflow:"hidden" }}>
+                  {(() => {
+                    const urls = selectedSet.imageUrl ? [selectedSet.imageUrl] : getImageUrls(selectedSet.setNumber);
+                    return urls.length ? <img src={urls[0]} alt="" style={{ width:"100%",height:"100%",objectFit:"contain" }} onError={e=>e.target.style.display="none"}/> : <div style={{ height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"3rem" }}>🧱</div>;
+                  })()}
+                </div>
+                <div style={{ padding:"1.5rem" }}>
+                  {/* Theme badge */}
+                  <div style={{ display:"inline-flex",alignItems:"center",gap:"0.4rem",background:(THEME_COLORS[selectedSet.theme]||"#666")+"22",color:THEME_COLORS[selectedSet.theme]||"#666",border:`1px solid ${THEME_COLORS[selectedSet.theme]||"#666"}44`,borderRadius:"100px",padding:"0.2rem 0.75rem",fontSize:"0.72rem",fontFamily:"sans-serif",fontWeight:"700",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:"0.75rem" }}>
+                    <span style={{ width:"6px",height:"6px",borderRadius:"50%",background:THEME_COLORS[selectedSet.theme]||"#666" }}/>
+                    {selectedSet.theme}
+                  </div>
+                  <h2 style={{ margin:"0 0 0.25rem",color:"#fffffe",fontFamily:"'Impact',sans-serif",letterSpacing:"0.03em",fontSize:"1.5rem" }}>{selectedSet.name}</h2>
+                  {selectedSet.setNumber && <div style={{ color:"#ffd60a",fontFamily:"monospace",fontSize:"0.85rem",marginBottom:"1rem" }}>#{selectedSet.setNumber}</div>}
+                  {/* Stats grid */}
+                  <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.6rem",marginBottom:"1rem" }}>
+                    {[
+                      ["📅 Year", selectedSet.year],
+                      ["🔢 Pieces", selectedSet.pieces ? Number(selectedSet.pieces).toLocaleString() : null],
+                      ["🧑 Minifigs", selectedSet.minifigs && selectedSet.minifigs!=="0" ? selectedSet.minifigs : null],
+                      ["📁 Folder", selectedSet.folder],
+                      ["💰 Paid", selectedSet.purchasePrice ? "$"+parseFloat(selectedSet.purchasePrice).toFixed(2) : null],
+                      ["📈 Value", selectedSet.currentValue ? "$"+parseFloat(selectedSet.currentValue).toFixed(2) : null],
+                    ].filter(([,v])=>v).map(([label,val])=>(
+                      <div key={label} style={{ background:"rgba(255,255,255,0.04)",borderRadius:"8px",padding:"0.6rem 0.75rem" }}>
+                        <div style={{ fontSize:"0.65rem",color:"#666",fontFamily:"sans-serif",textTransform:"uppercase",letterSpacing:"0.05em" }}>{label}</div>
+                        <div style={{ fontSize:"0.9rem",color:"#fffffe",fontFamily:"sans-serif",fontWeight:"700",marginTop:"0.1rem" }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Status */}
+                  <div style={{ display:"flex",gap:"0.5rem",alignItems:"center",marginBottom:"1rem" }}>
+                    <span style={{ background:(STATUS_COLORS[selectedSet.status]||"#666")+"22",color:STATUS_COLORS[selectedSet.status]||"#666",border:`1px solid ${STATUS_COLORS[selectedSet.status]||"#666"}55`,fontSize:"0.72rem",fontFamily:"sans-serif",fontWeight:"700",padding:"0.2rem 0.6rem",borderRadius:"100px",textTransform:"uppercase",letterSpacing:"0.04em" }}>{selectedSet.status}</span>
+                    {selectedSet.rating>0 && <span style={{ fontSize:"0.9rem" }}>{"⭐".repeat(selectedSet.rating)}{"☆".repeat(5-selectedSet.rating)}</span>}
+                  </div>
+                  {/* Notes / minifig names */}
+                  {selectedSet.notes && (
+                    <div style={{ background:"rgba(255,255,255,0.03)",borderRadius:"8px",padding:"0.75rem",marginBottom:"1rem",fontSize:"0.78rem",color:"#888",fontFamily:"sans-serif",lineHeight:1.6 }}>
+                      {selectedSet.notes}
+                    </div>
+                  )}
+                  {/* Gain/loss */}
+                  {selectedSet.purchasePrice && selectedSet.currentValue && (() => {
+                    const g = parseFloat(selectedSet.currentValue)-parseFloat(selectedSet.purchasePrice);
+                    return <div style={{ fontSize:"0.85rem",color:g>=0?"#22c55e":"#ef4444",fontFamily:"sans-serif",fontWeight:"700",marginBottom:"1rem" }}>{g>=0?"▲ Up":"▼ Down"} ${Math.abs(g).toFixed(2)} since purchase</div>;
+                  })()}
+                  {/* Action buttons */}
+                  <div style={{ display:"flex",gap:"0.5rem",flexWrap:"wrap" }}>
+                    {selectedSet.setNumber && (
+                      <a href={legoUrl(selectedSet.setNumber, selectedSet.name)} target="_blank" rel="noreferrer"
+                        style={{ flex:1,background:"#ffd60a22",color:"#ffd60a",border:"1px solid #ffd60a44",padding:"0.55rem",borderRadius:"8px",textDecoration:"none",textAlign:"center",fontSize:"0.8rem",fontFamily:"sans-serif",fontWeight:"700" }}>
+                        🛒 LEGO.com
+                      </a>
+                    )}
+                    {isAdmin && <button onClick={()=>{handleEdit(selectedSet);setSelectedSet(null);}} style={{ flex:1,background:"transparent",color:"#60a5fa",border:"1px solid #2563eb44",padding:"0.55rem",borderRadius:"8px",cursor:"pointer",fontSize:"0.8rem",fontFamily:"sans-serif" }}>✏️ Edit</button>}
+                    <button onClick={()=>setSelectedSet(null)} style={{ flex:1,background:"transparent",color:"#aaa",border:"1px solid #444",padding:"0.55rem",borderRadius:"8px",cursor:"pointer",fontSize:"0.8rem",fontFamily:"sans-serif" }}>Close</button>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Password prompt modal */}
