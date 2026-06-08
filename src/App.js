@@ -320,7 +320,7 @@ export default function LegoDatabase() {
         });
         const aiData = await response.json();
         const text = aiData.content?.[0]?.text || "";
-        info = JSON.parse(text.replace(/\`\`\`json|\`\`\`/g, "").trim());
+        info = JSON.parse(text.replace(/```json|```/g, "").trim());
       } catch(e) {}
 
       const price = bsData ? (bsData.LERetailPrice || bsData.AURetailPrice || bsData.USRetailPrice || "") : "";
@@ -726,7 +726,6 @@ export default function LegoDatabase() {
             ownedSets.forEach(s=>{ const f=s.folder||"No Folder"; byFolder[f]=(byFolder[f]||0)+1; });
             const folderData = Object.entries(byFolder).sort((a,b)=>b[1]-a[1]);
             // Value stats
-            const withValue = ownedSets.filter(s=>s.purchasePrice&&s.currentValue);
             const totalPaid2 = ownedSets.reduce((s,x)=>s+(parseFloat(x.purchasePrice)||0),0);
             const totalVal2 = ownedSets.reduce((s,x)=>s+(parseFloat(x.currentValue)||0),0);
             const topValue = [...ownedSets].filter(s=>s.currentValue).sort((a,b)=>parseFloat(b.currentValue)-parseFloat(a.currentValue)).slice(0,5);
