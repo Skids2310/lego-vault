@@ -3,6 +3,16 @@ import { useState, useEffect } from "react";
 const SUPABASE_URL = "https://xxphodciijtmxldnqazz.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh4cGhvZGNpaWp0bXhsZG5xYXp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MjQzNTcsImV4cCI6MjA5NjQwMDM1N30.Y0J_9RFfULkr_tYZMPbb4XF9Dcg5yJmJNa1_so972OY";
 const RECORD_ID = 1; // single row stores all sets as JSON
+const BRICKSET_KEY = "3-KVPt-gUGM-ksH4d";
+
+async function fetchBricksetSet(setNumber) {
+  const num = setNumber.includes("-") ? setNumber : `${setNumber}-1`;
+  const params = encodeURIComponent(JSON.stringify({ setNumber: num }));
+  const url = `https://brickset.com/api/v3.asmx/getSets?apiKey=${BRICKSET_KEY}&userHash=&params=${params}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  return data?.sets?.[0] || null;
+}
 const ADMIN_PASSWORD = "legovault2024"; // change this to whatever you like
 
 async function dbLoad() {
@@ -228,6 +238,27 @@ export default function LegoDatabase() {
     showToast("🔒 Logged out");
   }
 
+  async function lookupSetNumber(setNumber) {
+    if (!setNumber || setNumber.length < 4) return;
+    try {
+      const s = await fetchBricksetSet(setNumber);
+      if (!s) return;
+      const price = s.LERetailPrice || s.AURetailPrice || s.USRetailPrice || "";
+      setForm(f => ({
+        ...f,
+        name: f.name || s.name || f.name,
+        year: f.year || String(s.year || ""),
+        pieces: f.pieces || String(s.pieces || ""),
+        theme: THEMES.includes(s.theme) ? s.theme : (THEMES.includes(s.themeGroup) ? s.themeGroup : f.theme),
+        minifigs: f.minifigs || String(s.minifigs || ""),
+        currentValue: f.currentValue || (price ? String(price) : ""),
+      }));
+      showToast("✅ Set details loaded from Brickset!");
+    } catch(e) {
+      // silently fail - user can fill manually
+    }
+  }
+
   function toggleBulkSelect(id) {
     setSelectedSets(prev => {
       const next = new Set(prev);
@@ -267,35 +298,45 @@ export default function LegoDatabase() {
     showToast("🔍 Looking up set details...");
 
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 400,
-          messages: [{
-            role: "user",
-            content: `Look up LEGO set number ${setNumber} (${guessedName}). Reply with ONLY a JSON object, no markdown, no explanation:
-{"name":"full set name","setNumber":"${setNumber}","theme":"theme name","year":"release year as 4 digits","pieces":"piece count as number","minifigs":"minifig count as number","minifigNames":"comma separated minifig names or empty string"}`
-          }]
-        })
-      });
-      const data = await response.json();
-      const text = data.content?.[0]?.text || "";
-      const clean = text.replace(/```json|```/g, "").trim();
-      const info = JSON.parse(clean);
+      // Fetch from Brickset first for accurate data + price
+      let bsData = null;
+      try { bsData = await fetchBricksetSet(setNumber); } catch(e) {}
+
+      // Use Claude AI for minifig names (Brickset doesn't list names)
+      let info = {};
+      try {
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 300,
+            messages: [{
+              role: "user",
+              content: `LEGO set ${setNumber} (${guessedName}). Reply ONLY with JSON, no markdown:
+{"name":"full set name","theme":"theme","year":"4 digit year","pieces":"number","minifigs":"number","minifigNames":"comma separated names or empty"}`
+            }]
+          })
+        });
+        const aiData = await response.json();
+        const text = aiData.content?.[0]?.text || "";
+        info = JSON.parse(text.replace(/\`\`\`json|\`\`\`/g, "").trim());
+      } catch(e) {}
+
+      const price = bsData ? (bsData.LERetailPrice || bsData.AURetailPrice || bsData.USRetailPrice || "") : "";
       const notes = info.minifigNames ? `Minifigs: ${info.minifigNames}` : "";
       const newSet = {
         ...EMPTY_FORM,
         id: Date.now().toString(),
         addedAt: Date.now(),
         status,
-        name: info.name || guessedName,
-        setNumber: info.setNumber || setNumber,
-        theme: info.theme || "Other",
-        year: info.year || "",
-        pieces: info.pieces || "",
-        minifigs: info.minifigs || "",
+        name: bsData?.name || info.name || guessedName,
+        setNumber: setNumber,
+        theme: bsData?.theme || info.theme || "Other",
+        year: bsData?.year ? String(bsData.year) : (info.year || ""),
+        pieces: bsData?.pieces ? String(bsData.pieces) : (info.pieces || ""),
+        minifigs: bsData?.minifigs ? String(bsData.minifigs) : (info.minifigs || ""),
+        currentValue: price ? String(price) : "",
         notes,
       };
       const u = [newSet, ...sets];
@@ -448,8 +489,8 @@ export default function LegoDatabase() {
                     </div>
                   )}
                   <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:"1rem" }}>
-                    {[["Set Name *","name","text","e.g. Eiffel Tower"],["Set Number","setNumber","text","e.g. 10307"],["Year","year","number","e.g. 2023"],["Piece Count","pieces","number","e.g. 10001"],["Purchase Price ($)","purchasePrice","number","e.g. 49.99"],["Current Value ($)","currentValue","number","e.g. 89.99"]].map(([label,field,type,ph])=>(
-                      <label key={field} style={LS}>{label}<input type={type} placeholder={ph} value={form[field]||""} onChange={e=>setForm(f=>({...f,[field]:e.target.value}))} style={IS}/></label>
+                    {[["Set Name *","name","text","e.g. Eiffel Tower"],["Set Number","setNumber","text","e.g. 10307"],["Year","year","number","e.g. 2023"],["Piece Count","pieces","number","e.g. 10001"],["Purchase Price ($)","purchasePrice","number","e.g. 49.99"],["RRP / Current Value ($)","currentValue","number","e.g. 89.99"]].map(([label,field,type,ph])=>(
+                      <label key={field} style={LS}>{label}<input type={type} placeholder={ph} value={form[field]||""} onChange={e=>setForm(f=>({...f,[field]:e.target.value}))} onBlur={field==="setNumber"?()=>lookupSetNumber(form.setNumber):undefined} style={IS}/></label>
                     ))}
                     <label style={LS}>Theme<select value={form.theme} onChange={e=>setForm(f=>({...f,theme:e.target.value}))} style={IS}>{THEMES.map(t=><option key={t}>{t}</option>)}</select></label>
                     <label style={LS}>Status<select value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))} style={IS}>{STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}</select></label>
@@ -685,6 +726,7 @@ export default function LegoDatabase() {
             ownedSets.forEach(s=>{ const f=s.folder||"No Folder"; byFolder[f]=(byFolder[f]||0)+1; });
             const folderData = Object.entries(byFolder).sort((a,b)=>b[1]-a[1]);
             // Value stats
+            const withValue = ownedSets.filter(s=>s.purchasePrice&&s.currentValue);
             const totalPaid2 = ownedSets.reduce((s,x)=>s+(parseFloat(x.purchasePrice)||0),0);
             const totalVal2 = ownedSets.reduce((s,x)=>s+(parseFloat(x.currentValue)||0),0);
             const topValue = [...ownedSets].filter(s=>s.currentValue).sort((a,b)=>parseFloat(b.currentValue)-parseFloat(a.currentValue)).slice(0,5);
