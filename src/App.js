@@ -167,6 +167,8 @@ export default function LegoDatabase() {
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkStatus, setBulkStatus] = useState("");
   const [bulkFolder, setBulkFolder] = useState("");
+  const [fetchingPrices, setFetchingPrices] = useState(false);
+  const [fetchProgress, setFetchProgress] = useState(0);
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState(false);
@@ -236,6 +238,35 @@ export default function LegoDatabase() {
     localStorage.removeItem("lego-admin");
     setIsAdmin(false);
     showToast("🔒 Logged out");
+  }
+
+  async function bulkFetchPrices() {
+    const toFetch = sets.filter(s => s.setNumber && !s.currentValue);
+    if (toFetch.length === 0) return showToast("All sets already have prices!", "success");
+    setFetchingPrices(true);
+    setFetchProgress(0);
+    let updated = [...sets];
+    let count = 0;
+    for (const set of toFetch) {
+      try {
+        const bs = await fetchBricksetSet(set.setNumber);
+        if (bs) {
+          const price = bs.LERetailPrice || bs.AURetailPrice || bs.USRetailPrice || "";
+          if (price) {
+            updated = updated.map(s => s.id === set.id ? {...s, currentValue: String(price)} : s);
+            count++;
+          }
+        }
+        // Small delay to avoid rate limiting
+        await new Promise(r => setTimeout(r, 200));
+      } catch(e) {}
+      setFetchProgress(Math.round(((toFetch.indexOf(set)+1)/toFetch.length)*100));
+    }
+    setSets(updated);
+    saveSets(updated);
+    setFetchingPrices(false);
+    setFetchProgress(0);
+    showToast(`✅ Fetched prices for ${count} sets!`);
   }
 
   async function lookupSetNumber(setNumber) {
@@ -544,6 +575,26 @@ export default function LegoDatabase() {
                   <button onClick={()=>setSelectedSets(new Set())} style={{ background:"transparent",color:"#aaa",border:"1px solid #444",padding:"0.5rem 0.75rem",borderRadius:"6px",cursor:"pointer",fontFamily:"sans-serif",fontSize:"0.75rem" }}>Clear</button>
                 </div>
               )}
+              {/* Bulk price fetch */}
+              {isAdmin && !bulkMode && !showForm && (
+                <div style={{ marginBottom:"1rem" }}>
+                  {fetchingPrices ? (
+                    <div style={{ background:"rgba(26,26,46,0.9)",border:"1px solid #2a2a4a",borderRadius:"8px",padding:"0.75rem 1rem",display:"flex",alignItems:"center",gap:"1rem" }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:"0.75rem",color:"#aaa",fontFamily:"sans-serif",marginBottom:"0.35rem" }}>Fetching prices from Brickset... {fetchProgress}%</div>
+                        <div style={{ background:"#0f0e17",borderRadius:"100px",height:"6px",overflow:"hidden" }}>
+                          <div style={{ width:`${fetchProgress}%`,height:"100%",background:"#22c55e",borderRadius:"100px",transition:"width 0.3s" }}/>
+                        </div>
+                      </div>
+                    </div>
+                  ) : sets.filter(s=>s.setNumber&&!s.currentValue).length > 0 && (
+                    <button onClick={bulkFetchPrices}
+                      style={{ background:"rgba(34,197,94,0.1)",color:"#22c55e",border:"1px solid #22c55e44",padding:"0.5rem 1rem",borderRadius:"8px",cursor:"pointer",fontSize:"0.78rem",fontFamily:"sans-serif",fontWeight:"700" }}>
+                      💰 Fetch RRP for {sets.filter(s=>s.setNumber&&!s.currentValue).length} sets missing prices
+                    </button>
+                  )}
+                </div>
+              )}
               <div style={{ fontSize:"0.72rem",color:"#555",fontFamily:"sans-serif",marginBottom:"0.75rem" }}>Showing {filtered.length} of {owned.length} sets{bulkMode ? " · tap cards to select" : ""}</div>
 
               {loading ? (
@@ -567,14 +618,14 @@ export default function LegoDatabase() {
                           {set.folder && <Chip icon="📁" val={set.folder}/>}
                           {set.minifigs && set.minifigs!=="0" && set.minifigs!=="" && <Chip icon="🧑" val={set.minifigs+" fig"+(set.minifigs==="1"?"":"s")}/>}
                         </div>
-                        {/* Value row */}
+                        {/* Value row - always show if any price exists */}
                         {(set.purchasePrice || set.currentValue) && (
-                          <div style={{ display:"flex",gap:"0.75rem",fontFamily:"sans-serif",fontSize:"0.75rem",marginTop:"0.1rem" }}>
-                            {set.purchasePrice && <span style={{ color:"#888" }}>Paid: <span style={{ color:"#fffffe" }}>${parseFloat(set.purchasePrice).toFixed(2)}</span></span>}
-                            {set.currentValue && <span style={{ color:"#888" }}>Value: <span style={{ color: parseFloat(set.currentValue)>parseFloat(set.purchasePrice||0)?"#22c55e":"#ef4444" }}>${parseFloat(set.currentValue).toFixed(2)}</span></span>}
+                          <div style={{ display:"flex",gap:"0.6rem",fontFamily:"sans-serif",fontSize:"0.72rem",marginTop:"0.1rem",flexWrap:"wrap",alignItems:"center" }}>
+                            {set.currentValue && <span style={{ background:"#22c55e15",color:"#22c55e",border:"1px solid #22c55e33",borderRadius:"100px",padding:"0.1rem 0.5rem" }}>RRP ${parseFloat(set.currentValue).toFixed(2)}</span>}
+                            {set.purchasePrice && <span style={{ color:"#888" }}>Paid <span style={{ color:"#fffffe" }}>${parseFloat(set.purchasePrice).toFixed(2)}</span></span>}
                             {set.purchasePrice && set.currentValue && (() => {
                               const g = parseFloat(set.currentValue)-parseFloat(set.purchasePrice);
-                              return <span style={{ color: g>=0?"#22c55e":"#ef4444" }}>{g>=0?"+":""}{g.toFixed(2)}</span>;
+                              return <span style={{ color:g>=0?"#22c55e":"#ef4444",fontWeight:"700" }}>{g>=0?"▲":"▼"}${Math.abs(g).toFixed(2)}</span>;
                             })()}
                           </div>
                         )}
@@ -889,7 +940,7 @@ export default function LegoDatabase() {
                       ["🧑 Minifigs", selectedSet.minifigs && selectedSet.minifigs!=="0" ? selectedSet.minifigs : null],
                       ["📁 Folder", selectedSet.folder],
                       ["💰 Paid", selectedSet.purchasePrice ? "$"+parseFloat(selectedSet.purchasePrice).toFixed(2) : null],
-                      ["📈 Value", selectedSet.currentValue ? "$"+parseFloat(selectedSet.currentValue).toFixed(2) : null],
+                      ["🏷️ RRP", selectedSet.currentValue ? "$"+parseFloat(selectedSet.currentValue).toFixed(2) : null],
                     ].filter(([,v])=>v).map(([label,val])=>(
                       <div key={label} style={{ background:"rgba(255,255,255,0.04)",borderRadius:"8px",padding:"0.6rem 0.75rem" }}>
                         <div style={{ fontSize:"0.65rem",color:"#666",fontFamily:"sans-serif",textTransform:"uppercase",letterSpacing:"0.05em" }}>{label}</div>
