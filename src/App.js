@@ -422,11 +422,29 @@ export default function LegoDatabase() {
         && (filterFolder==="All" || (filterFolder==="(none)" ? !s.folder : s.folder===filterFolder));
     })
     .sort((a,b) => {
-      if (sortBy==="name") return a.name.localeCompare(b.name);
-      if (sortBy==="year") return (b.year||0)-(a.year||0);
-      if (sortBy==="pieces") return (parseInt(b.pieces)||0)-(parseInt(a.pieces)||0);
-      if (sortBy==="value") return (parseFloat(b.currentValue)||0)-(parseFloat(a.currentValue)||0);
-      return b.addedAt - a.addedAt;
+      switch(sortBy) {
+        case "name_az": return a.name.localeCompare(b.name);
+        case "name_za": return b.name.localeCompare(a.name);
+        case "name":    return a.name.localeCompare(b.name);
+        case "year_desc": case "year": return (parseInt(b.year)||0)-(parseInt(a.year)||0);
+        case "year_asc":  return (parseInt(a.year)||0)-(parseInt(b.year)||0);
+        case "pieces_desc": case "pieces": return (parseInt(b.pieces)||0)-(parseInt(a.pieces)||0);
+        case "pieces_asc":  return (parseInt(a.pieces)||0)-(parseInt(b.pieces)||0);
+        case "minifigs_desc": return (parseInt(b.minifigs)||0)-(parseInt(a.minifigs)||0);
+        case "value_desc": case "value": return (parseFloat(b.currentValue)||0)-(parseFloat(a.currentValue)||0);
+        case "value_asc":  return (parseFloat(a.currentValue)||0)-(parseFloat(b.currentValue)||0);
+        case "paid_desc":  return (parseFloat(b.purchasePrice)||0)-(parseFloat(a.purchasePrice)||0);
+        case "paid_asc":   return (parseFloat(a.purchasePrice)||0)-(parseFloat(b.purchasePrice)||0);
+        case "gain_desc": {
+          const ga = (parseFloat(a.currentValue)||0)-(parseFloat(a.purchasePrice)||0);
+          const gb = (parseFloat(b.currentValue)||0)-(parseFloat(b.purchasePrice)||0);
+          return gb - ga;
+        }
+        case "rating_desc": return (parseInt(b.rating)||0)-(parseInt(a.rating)||0);
+        case "theme":  return (a.theme||"").localeCompare(b.theme||"");
+        case "folder": return (a.folder||"").localeCompare(b.folder||"");
+        default: return b.addedAt - a.addedAt;
+      }
     });
 
   const totalPieces = owned.reduce((s,x)=>s+(parseInt(x.pieces)||0),0);
